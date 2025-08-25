@@ -140,8 +140,12 @@ def start_sam(args) -> int:
         
         if hasattr(args, 'api') and args.api:
             # Start FastAPI
-            import uvicorn
-            uvicorn.run("sam.api.fast:app", host=cfg.api.host, port=cfg.api.port, reload=False)
+            try:
+                import uvicorn
+                uvicorn.run("sam.api.fast:app", host=cfg.api.host, port=cfg.api.port, reload=False)
+            except ImportError:
+                logger.error("FastAPI dependencies not installed. Run: pip install fastapi uvicorn")
+                return 1
         else:
             # Core services only
             print("Core services initialized (no API).")
@@ -535,7 +539,9 @@ def handle_psp_doc(args) -> int:
         # run V_SP calculation (call into existing V_SP engine)
         from sam.core.vsp_engine import VSPEngine
         engine = VSPEngine()
-        engine.update_schema_basis([0.1, 0.2, 0.3, 0.4])  # 4D basis
+        # Create a 384-dimensional schema basis (first 4 values, rest zeros)
+        schema_basis = [0.1, 0.2, 0.3, 0.4] + [0.0] * (embed.dimension - 4)
+        engine.update_schema_basis(schema_basis)
         embedding = embed.embed([args.text])[0]
         vsp = engine.compute_vsp(embedding)
         mode = engine.get_mode(vsp)

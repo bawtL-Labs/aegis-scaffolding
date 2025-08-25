@@ -1,4 +1,4 @@
-from .embedding_adapter import EmbeddingAdapter
+from .embedding_adapters import EmbeddingAdapter
 from transformers import AutoTokenizer, AutoModel
 import torch
 

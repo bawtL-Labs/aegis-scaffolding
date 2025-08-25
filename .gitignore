@@ -12,3 +12,18 @@
 
 pkg/
 src/
+
+# S.A.M. specific
+.venv/
+__pycache__/
+*.pyc
+dist/
+build/
+*.egg-info/
+.data/
+data/
+logs/
+*.db
+.cache/
+.cache_dir/
+.DS_Store

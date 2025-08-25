@@ -378,6 +378,9 @@ class MAAL:
         self.rel = relational_conn
         self.vector_backend = cfg.memory.vector_backend
         
+        # Initialize database schema
+        self._init_schema()
+        
         # Validate embedding dimension
         if self.vector_backend == "lancedb" and self.embedding.dimension != cfg.embedding.dimension:
             raise ValueError("Embedding dimension mismatch with config")
@@ -393,6 +396,58 @@ class MAAL:
         self.logger.info("MAAL initialized", 
                         relational_backend="sqlite",
                         vector_backend=self.vector_backend)
+    
+    def _init_schema(self):
+        """Initialize database schema."""
+        cursor = self.rel.cursor()
+        
+        # PSP versions table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS psp_versions (
+                psp_version TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL
+            )
+        """)
+        
+        # PSP snapshots table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS psp_snapshots (
+                id TEXT PRIMARY KEY,
+                instance_id TEXT NOT NULL,
+                psp_version TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                blob BLOB NOT NULL,
+                hash TEXT NOT NULL,
+                FOREIGN KEY (psp_version) REFERENCES psp_versions(psp_version)
+            )
+        """)
+        
+        # Documents table (for the new document storage)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS docs (
+                id TEXT PRIMARY KEY,
+                text TEXT,
+                meta JSON
+            )
+        """)
+        
+        # Events table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS events (
+                id TEXT PRIMARY KEY,
+                ts TEXT NOT NULL,
+                type TEXT NOT NULL,
+                payload BLOB NOT NULL,
+                vsp REAL,
+                mode TEXT
+            )
+        """)
+        
+        # Create indexes
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_psp_snapshots_instance_ts ON psp_snapshots(instance_id, ts)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_ts_type ON events(ts, type)")
+        
+        self.rel.commit()
     
     # Relational operations
     def save_psp(self, psp: PSP) -> str:

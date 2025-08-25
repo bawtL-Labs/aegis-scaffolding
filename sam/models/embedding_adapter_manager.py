@@ -1,5 +1,5 @@
 from typing import Optional
-from .embedding_adapter import EmbeddingAdapter
+from .embedding_adapters import EmbeddingAdapter
 from .embedding_minilm import MiniLMAdapter
 
 

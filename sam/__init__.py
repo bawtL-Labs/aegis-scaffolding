@@ -14,11 +14,4 @@ from .memory.maal import MAAL
 from .models.llm_adapters import LLMAdapter
 from .models.embedding_adapters import EmbeddingAdapter
 
-__all__ = [
-    "PSP",
-    "VSPEngine", 
-    "SchemaFirewall",
-    "MAAL",
-    "LLMAdapter",
-    "EmbeddingAdapter",
-]
+__all__ = ["__version__"]
