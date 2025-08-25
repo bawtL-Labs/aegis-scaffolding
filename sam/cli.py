@@ -10,6 +10,7 @@ from typing import Optional
 
 from .core.psp import PSP
 from .core.vsp_engine import VSPEngine, Mode
+from .core.identity_core import IdentityCore, Value, PersonalityTrait, Capability, Relationship, AutobiographicalMemory, ValueType, TraitCategory, RelationshipType
 from .memory.maal import MAAL
 from .utils.logging import setup_logging, get_logger
 
@@ -51,6 +52,13 @@ Examples:
     vsp_subparsers.add_parser('test', help='Test V_SP engine')
     vsp_subparsers.add_parser('demo', help='Run V_SP demo')
     
+    # Identity Core commands
+    identity_parser = subparsers.add_parser('identity', help='Identity Core operations')
+    identity_subparsers = identity_parser.add_subparsers(dest='identity_command')
+    identity_subparsers.add_parser('show', help='Show identity summary')
+    identity_subparsers.add_parser('create', help='Create new identity')
+    identity_subparsers.add_parser('demo', help='Run identity demo')
+    
     # Test command
     test_parser = subparsers.add_parser('test', help='Run tests')
     test_parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
@@ -74,6 +82,8 @@ Examples:
             return handle_psp(args)
         elif args.command == 'vsp':
             return handle_vsp(args)
+        elif args.command == 'identity':
+            return handle_identity(args)
         elif args.command == 'test':
             return run_tests(args)
         else:
@@ -324,6 +334,173 @@ def run_tests(args) -> int:
     except ImportError:
         logger.error("pytest not available. Install with: pip install pytest")
         return 1
+
+
+def handle_identity(args) -> int:
+    """Handle identity core commands."""
+    logger = get_logger(__name__)
+    
+    if not args.identity_command:
+        logger.error("Identity command required")
+        return 1
+    
+    try:
+        if args.identity_command == 'show':
+            return show_identity()
+        elif args.identity_command == 'create':
+            return create_identity()
+        elif args.identity_command == 'demo':
+            return demo_identity()
+        else:
+            logger.error(f"Unknown identity command: {args.identity_command}")
+            return 1
+            
+    except Exception as e:
+        logger.error(f"Error in identity command: {e}", exc_info=True)
+        return 1
+
+
+def show_identity() -> int:
+    """Show identity summary."""
+    logger = get_logger(__name__)
+    
+    print("=== S.A.M. Identity Summary ===")
+    
+    # Try to load existing identity, or create new one
+    identity_file = Path("./data/identity.json")
+    if identity_file.exists():
+        with open(identity_file, 'r') as f:
+            data = json.load(f)
+        identity = IdentityCore.from_dict(data)
+        print("📁 Loaded existing identity")
+    else:
+        identity = IdentityCore()
+        print("🆕 Created new identity")
+    
+    summary = identity.get_identity_summary()
+    
+    print(f"\n👤 Name: {summary['name']}")
+    print(f"📋 Version: {summary['version']}")
+    print(f"📝 Description: {summary['self_description']}")
+    print(f"🎯 Mission: {summary['mission_statement']}")
+    
+    print(f"\n💎 Core Values ({len(summary['core_values'])}):")
+    for value in summary['core_values']:
+        print(f"   • {value['name']} ({value['type']}): {value['strength']:.2f}")
+    
+    print(f"\n🧠 Personality Profile:")
+    for trait, data in summary['personality_profile'].items():
+        print(f"   • {trait.title()}: {data['value']:.2f} (confidence: {data['confidence']:.2f})")
+    
+    print(f"\n⚡ Capabilities ({len(summary['capabilities'])}):")
+    for name, data in summary['capabilities'].items():
+        print(f"   • {name.title()}: {data['proficiency']:.2f} (practiced {data['practice_count']} times)")
+    
+    print(f"\n🤝 Relationships: {summary['relationships_count']}")
+    print(f"📚 Memories: {summary['memories_count']}")
+    print(f"🕒 Last Updated: {summary['last_updated']}")
+    
+    return 0
+
+
+def create_identity() -> int:
+    """Create new identity."""
+    logger = get_logger(__name__)
+    
+    print("=== Creating New S.A.M. Identity ===")
+    
+    identity = IdentityCore()
+    
+    # Save to file
+    data_dir = Path("./data")
+    data_dir.mkdir(exist_ok=True)
+    
+    with open(data_dir / "identity.json", 'w') as f:
+        json.dump(identity.to_dict(), f, indent=2)
+    
+    print("✅ New identity created and saved to data/identity.json")
+    print(f"🆔 Instance ID: {identity.instance_id}")
+    print(f"📅 Created: {identity.created_at}")
+    
+    return 0
+
+
+def demo_identity() -> int:
+    """Run identity demo."""
+    logger = get_logger(__name__)
+    
+    print("=== S.A.M. Identity Core Demo ===")
+    
+    # Create identity
+    identity = IdentityCore()
+    print("1. Created new identity")
+    
+    # Add a new value
+    justice_value = Value(
+        name="Justice",
+        description="Fairness and equality for all beings",
+        value_type=ValueType.ETHICAL,
+        strength=0.8,
+        stability=0.9
+    )
+    identity.add_value(justice_value)
+    print("2. Added Justice value")
+    
+    # Reinforce values
+    identity.reinforce_value("Curiosity")
+    identity.reinforce_value("Integrity")
+    print("3. Reinforced core values")
+    
+    # Update personality
+    identity.update_personality_trait(TraitCategory.OPENNESS, 0.8, 0.9)
+    print("4. Updated personality trait")
+    
+    # Add capability
+    programming = Capability(
+        name="Programming",
+        description="Ability to write and understand code",
+        proficiency=0.6,
+        confidence=0.7
+    )
+    identity.add_capability(programming)
+    print("5. Added Programming capability")
+    
+    # Practice capability
+    identity.practice_capability("programming", 0.1)
+    print("6. Practiced Programming capability")
+    
+    # Add relationship
+    user_rel = Relationship(
+        entity_id="user_001",
+        entity_name="Human User",
+        relationship_type=RelationshipType.FRIEND,
+        trust_level=0.7,
+        familiarity=0.5
+    )
+    identity.add_relationship(user_rel)
+    print("7. Added relationship with Human User")
+    
+    # Add memory
+    memory = AutobiographicalMemory(
+        title="First Demo",
+        description="My first identity demonstration",
+        emotional_impact=0.6,
+        importance=0.7,
+        tags=["demo", "first", "learning"]
+    )
+    identity.add_memory(memory)
+    print("8. Added autobiographical memory")
+    
+    # Show summary
+    summary = identity.get_identity_summary()
+    print(f"\n📊 Final Summary:")
+    print(f"   Values: {len(summary['core_values'])}")
+    print(f"   Capabilities: {len(summary['capabilities'])}")
+    print(f"   Relationships: {summary['relationships_count']}")
+    print(f"   Memories: {summary['memories_count']}")
+    
+    print("\n✅ Identity Core demo completed successfully!")
+    return 0
 
 
 if __name__ == "__main__":
