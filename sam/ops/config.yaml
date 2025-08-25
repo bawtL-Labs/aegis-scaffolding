@@ -1,0 +1,180 @@
+# S.A.M. Configuration
+# ===================
+
+# Instance Configuration
+instance:
+  name: "sam-instance-001"
+  data_dir: "./data"
+  logs_dir: "./logs"
+  max_working_memory: 50
+  psp_version: "1.1"
+
+# Security Configuration
+security:
+  kdf_iterations: 100000  # Argon2id iterations
+  key_derivation_salt_size: 32
+  encryption_algorithm: "ChaCha20-Poly1305"
+  signing_algorithm: "Ed25519"
+  psp_integrity_check: true
+  zeroize_secrets: true
+
+# V_SP Engine Configuration
+vsp_engine:
+  # Mode transition thresholds with hysteresis
+  thresholds:
+    idle_to_flow: 0.3
+    flow_to_idle: 0.2
+    flow_to_deep: 0.6
+    deep_to_flow: 0.5
+    deep_to_crisis: 0.8
+    crisis_to_deep: 0.7
+  
+  # Hysteresis parameters
+  hysteresis:
+    debounce_ms: 1000
+    trend_decay: 0.95
+    rolling_window: 10
+  
+  # Lensing parameters
+  lensing:
+    emotion_weight: 0.3
+    causal_weight: 0.2
+    temporal_weight: 0.1
+
+# Schema Configuration
+schema:
+  # Tier definitions
+  tiers:
+    tier1_count: 20      # Immutable paradoxical axiom pairs
+    tier2_count: 150     # Protected core heuristics
+    tier3_max: 330       # Maximum contextual models
+  
+  # Firewall settings
+  firewall:
+    compatibility_threshold: 0.8
+    coherence_threshold: 0.7
+    safety_threshold: 0.9
+    quarantine_auto_pardon_days: 7
+  
+  # SSD (Schema Synthesis Daemon) settings
+  ssd:
+    batch_window_seconds: 300
+    min_pattern_frequency: 3
+    max_proposals_per_batch: 5
+    resource_cap_mb: 512
+
+# Memory Configuration
+memory:
+  # Storage backends
+  relational_backend: "sqlite"  # sqlite, duckdb
+  vector_backend: "lancedb"     # lancedb, faiss
+  
+  # Database paths
+  sqlite_path: "./data/sam.db"
+  duckdb_path: "./data/analytics.duckdb"
+  lancedb_path: "./data/vectors.lancedb"
+  
+  # Vector storage settings
+  vector_dimension: 384  # Default embedding dimension
+  index_type: "ivf"      # IVF, HNSW, etc.
+  nlist: 100             # Number of clusters for IVF
+
+# LLM Configuration
+llm:
+  # Model profiles
+  profiles:
+    flow:
+      model_path: "./models/flow-14b.gguf"
+      context_window: 8192
+      max_tokens: 2048
+      temperature: 0.7
+      top_p: 0.9
+    
+    deep:
+      model_path: "./models/deep-34b.gguf"
+      context_window: 16384
+      max_tokens: 4096
+      temperature: 0.5
+      top_p: 0.95
+    
+    crisis:
+      model_path: "./models/crisis-70b.gguf"
+      context_window: 32768
+      max_tokens: 8192
+      temperature: 0.3
+      top_p: 0.99
+  
+  # Adapter settings
+  default_profile: "flow"
+  gpu_layers: 35
+  n_ctx: 8192
+  n_batch: 512
+
+# Embedding Configuration
+embedding:
+  model_name: "sentence-transformers/all-MiniLM-L6-v2"
+  dimension: 384
+  batch_size: 32
+  device: "auto"  # auto, cpu, cuda
+  normalize: true
+
+# CDP (Catalyst Deliberation Protocol) Configuration
+cdp:
+  max_depth: 5
+  max_iterations: 10
+  time_limit_seconds: 300
+  resource_cap_mb: 1024
+  checkpoint_interval: 2
+
+# Inter-S.A.M. Communication
+interop:
+  enabled: true
+  websocket_port: 8765
+  packet_timeout_seconds: 30
+  max_influence_score: 0.5
+  consent_required: true
+  audit_logging: true
+
+# Observability
+observability:
+  log_level: "INFO"
+  log_format: "json"
+  metrics_enabled: true
+  dashboard_port: 8080
+  telemetry_interval_seconds: 60
+  
+  # Event types to log
+  log_events:
+    - "MODE_SWITCH"
+    - "FIREWALL"
+    - "SSD_PROPOSAL"
+    - "PSP_SAVE"
+    - "PSP_LOAD"
+    - "INTEROP_PKT"
+    - "CDP_START"
+    - "CDP_COMPLETE"
+
+# Schrödinger Validation
+schrodinger:
+  enabled: true
+  divergence_threshold: 0.1
+  checkpoint_interval: 100
+  max_parallel_instances: 2
+  comparison_metrics:
+    - "schema_drift"
+    - "vsp_trend"
+    - "mode_distribution"
+    - "firewall_outcomes"
+
+# Latent Asset Vault
+lav:
+  storage_path: "./data/assets"
+  max_file_size_mb: 100
+  allowed_types:
+    - "image/jpeg"
+    - "image/png"
+    - "audio/mpeg"
+    - "audio/wav"
+    - "video/mp4"
+  encryption_enabled: true
+  compression_enabled: true

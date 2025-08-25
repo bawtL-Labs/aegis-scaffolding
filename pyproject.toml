@@ -1,0 +1,101 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sovereign-autonomous-model"
+version = "0.1.0"
+description = "Sovereign Autonomous Model - A natively digital, sovereign intelligence with persistent, schema-driven memory"
+authors = [
+    {name = "S.A.M. Development Team", email = "sam@example.com"}
+]
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    # Core dependencies
+    "pydantic>=2.5.0",
+    "orjson>=3.9.0",
+    "structlog>=23.2.0",
+    "cryptography>=41.0.0",
+    
+    # Web framework
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "websockets>=12.0",
+    
+    # Database and storage
+    "sqlite-utils>=3.35.0",
+    "duckdb>=0.9.0",
+    "lancedb>=0.5.0",
+    "faiss-cpu>=1.7.0",  # Will be replaced with faiss-gpu in production
+    
+    # LLM and embeddings
+    "llama-cpp-python[cuda]>=0.2.0",
+    "vllm>=0.2.0",
+    "sentence-transformers>=2.2.0",
+    
+    # Utilities
+    "numpy>=1.24.0",
+    "scipy>=1.11.0",
+    "blake3>=0.4.0",
+    "python-multipart>=0.0.6",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.7.0",
+    "ruff>=0.1.0",
+]
+gpu = [
+    "faiss-gpu>=1.7.0",
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
+]
+
+[project.scripts]
+sam = "sam.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["sam"]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+select = ["E", "F", "I", "N", "W", "B", "C4", "UP"]
+ignore = ["E501", "B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=sam --cov-report=term-missing"
