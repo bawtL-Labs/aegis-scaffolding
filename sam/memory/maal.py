@@ -361,51 +361,71 @@ class MAAL:
     Provides storage-agnostic interface for vector DBs and relational stores.
     """
     
-    def __init__(self, 
-                 relational_backend: str = "sqlite",
-                 vector_backend: str = "lancedb",
-                 sqlite_path: str = "./data/sam.db",
-                 lancedb_path: str = "./data/vectors.lancedb",
-                 vector_dimension: int = 384):
+    def __init__(self, cfg, embedding_adapter, relational_conn, vector_client=None):
         """
-        Initialize MAAL with specified backends.
+        Initialize MAAL with configuration and adapters.
         
         Args:
-            relational_backend: "sqlite" or "duckdb"
-            vector_backend: "lancedb" or "faiss"
-            sqlite_path: Path to SQLite database
-            lancedb_path: Path to LanceDB database
-            vector_dimension: Dimension of embedding vectors
+            cfg: Configuration object
+            embedding_adapter: Embedding adapter instance
+            relational_conn: Relational database connection
+            vector_client: Optional vector database client
         """
         self.logger = get_logger(__name__)
         
-        # Initialize relational backend
-        if relational_backend == "sqlite":
-            self.relational = SQLiteBackend(sqlite_path)
-        elif relational_backend == "duckdb":
-            # TODO: Implement DuckDB backend
-            raise NotImplementedError("DuckDB backend not yet implemented")
-        else:
-            raise ValueError(f"Unsupported relational backend: {relational_backend}")
+        self.cfg = cfg
+        self.embedding = embedding_adapter
+        self.rel = relational_conn
+        self.vector_backend = cfg.memory.vector_backend
         
-        # Initialize vector backend
-        if vector_backend == "lancedb":
-            self.vector = LanceDBBackend(lancedb_path, vector_dimension)
-        elif vector_backend == "faiss":
-            # TODO: Implement FAISS backend
-            raise NotImplementedError("FAISS backend not yet implemented")
+        # Validate embedding dimension
+        if self.vector_backend == "lancedb" and self.embedding.dimension != cfg.embedding.dimension:
+            raise ValueError("Embedding dimension mismatch with config")
+        
+        # Initialize vector backend if needed
+        if self.vector_backend == "lancedb":
+            self.vector = LanceDBBackend(cfg.memory.lancedb_uri, cfg.embedding.dimension)
+        elif self.vector_backend == "none":
+            self.vector = None
         else:
-            raise ValueError(f"Unsupported vector backend: {vector_backend}")
+            raise ValueError(f"Unsupported vector backend: {self.vector_backend}")
         
         self.logger.info("MAAL initialized", 
-                        relational_backend=relational_backend,
-                        vector_backend=vector_backend)
+                        relational_backend="sqlite",
+                        vector_backend=self.vector_backend)
     
     # Relational operations
     def save_psp(self, psp: PSP) -> str:
         """Save PSP to storage."""
         try:
-            psp_id = self.relational.save_psp(psp)
+            # Use the relational connection directly
+            cursor = self.rel.cursor()
+            
+            # Ensure PSP version exists
+            cursor.execute("""
+                INSERT OR IGNORE INTO psp_versions (psp_version, created_at)
+                VALUES (?, ?)
+            """, (psp.psp_version, datetime.now(timezone.utc).isoformat()))
+            
+            # Save PSP snapshot
+            psp_id = f"{psp.instance_id}_{psp.timestamp.isoformat()}"
+            psp_blob = orjson.dumps(psp.to_dict())
+            psp_hash = blake3.blake3(psp_blob).hexdigest()
+            
+            cursor.execute("""
+                INSERT OR REPLACE INTO psp_snapshots 
+                (id, instance_id, psp_version, ts, blob, hash)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                psp_id,
+                psp.instance_id,
+                psp.psp_version,
+                psp.timestamp.isoformat(),
+                psp_blob,
+                psp_hash
+            ))
+            
+            self.rel.commit()
             self.logger.info("PSP saved", psp_id=psp_id, instance_id=psp.instance_id)
             return psp_id
         except Exception as e:
@@ -415,12 +435,21 @@ class MAAL:
     def load_latest_psp(self) -> Optional[PSP]:
         """Load the latest PSP."""
         try:
-            psp = self.relational.load_latest_psp()
-            if psp:
+            cursor = self.rel.cursor()
+            cursor.execute("""
+                SELECT blob FROM psp_snapshots 
+                ORDER BY ts DESC LIMIT 1
+            """)
+            
+            result = cursor.fetchone()
+            if result:
+                psp_data = orjson.loads(result[0])
+                psp = PSP.from_dict(psp_data)
                 self.logger.info("PSP loaded", instance_id=psp.instance_id)
+                return psp
             else:
                 self.logger.info("No PSP found")
-            return psp
+                return None
         except Exception as e:
             self.logger.error("Failed to load PSP", error=str(e))
             raise
@@ -428,15 +457,63 @@ class MAAL:
     def log_event(self, event: Dict[str, Any]) -> None:
         """Log an event."""
         try:
-            self.relational.log_event(event)
+            cursor = self.rel.cursor()
+            event_id = str(uuid.uuid4())
+            cursor.execute("""
+                INSERT INTO events (id, ts, type, payload, vsp, mode)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                event_id,
+                datetime.now(timezone.utc).isoformat(),
+                event.get("type", "unknown"),
+                orjson.dumps(event),
+                event.get("vsp"),
+                event.get("mode")
+            ))
+            self.rel.commit()
             self.logger.debug("Event logged", event_type=event.get("type"))
         except Exception as e:
             self.logger.error("Failed to log event", error=str(e))
             raise
     
+    def write_document(self, doc: Dict[str, Any]) -> None:
+        """Write a document to storage."""
+        try:
+            cursor = self.rel.cursor()
+            
+            # Store in relational database
+            cursor.execute("""
+                INSERT OR REPLACE INTO docs (id, text, meta)
+                VALUES (?, ?, ?)
+            """, (
+                doc["id"],
+                doc.get("text", ""),
+                orjson.dumps(doc.get("meta", {}))
+            ))
+            
+            # Store vector if backend is available
+            if self.vector_backend != "none" and "text" in doc:
+                embeddings = self.embedding.embed([doc["text"]])
+                vector_items = [{
+                    "id": doc["id"],
+                    "embedding": embeddings[0],
+                    "metadata": doc.get("meta", {})
+                }]
+                self.vector.upsert_embeddings(vector_items)
+            
+            self.rel.commit()
+            self.logger.info("Document written", doc_id=doc["id"])
+        except Exception as e:
+            self.logger.error("Failed to write document", error=str(e))
+            raise
+    
     # Vector operations
     def upsert_embeddings(self, items: List[Dict[str, Any]]) -> None:
         """Upsert embedding vectors."""
+        if self.vector_backend == "none":
+            self.logger.debug("Vector backend disabled, skipping embedding upsert")
+            return
+        
         try:
             self.vector.upsert_embeddings(items)
             self.logger.info("Embeddings upserted", count=len(items))
@@ -447,6 +524,10 @@ class MAAL:
     def query(self, vec: List[float], k: int = 10, 
               filter_dict: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Query similar vectors."""
+        if self.vector_backend == "none":
+            self.logger.debug("Vector backend disabled, returning empty results")
+            return []
+        
         try:
             results = self.vector.query(vec, k, filter_dict)
             self.logger.debug("Vector query executed", k=k, results_count=len(results))
@@ -457,6 +538,10 @@ class MAAL:
     
     def delete(self, ids: List[str]) -> int:
         """Delete vectors by ID."""
+        if self.vector_backend == "none":
+            self.logger.debug("Vector backend disabled, skipping vector deletion")
+            return 0
+        
         try:
             deleted_count = self.vector.delete(ids)
             self.logger.info("Vectors deleted", count=deleted_count, ids=ids)
@@ -468,8 +553,10 @@ class MAAL:
     def close(self) -> None:
         """Close all backends."""
         try:
-            self.relational.close()
-            self.vector.close()
+            if self.rel:
+                self.rel.close()
+            if self.vector and self.vector_backend != "none":
+                self.vector.close()
             self.logger.info("MAAL closed")
         except Exception as e:
             self.logger.error("Error closing MAAL", error=str(e))

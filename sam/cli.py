@@ -5,6 +5,8 @@ Command-line interface for S.A.M. (Sovereign Autonomous Model)
 import argparse
 import json
 import sys
+import os
+import getpass
 from pathlib import Path
 from typing import Optional
 
@@ -13,6 +15,9 @@ from .core.vsp_engine import VSPEngine, Mode
 from .core.identity_core import IdentityCore, Value, PersonalityTrait, Capability, Relationship, AutobiographicalMemory, ValueType, TraitCategory, RelationshipType
 from .memory.maal import MAAL
 from .utils.logging import setup_logging, get_logger
+from .utils.config import load_config
+from .security.keystore import create_keystore
+from .ops.bootstrap import bootstrap
 
 
 def main():
@@ -38,7 +43,7 @@ Examples:
     
     # Start command
     start_parser = subparsers.add_parser('start', help='Start S.A.M. instance')
-    start_parser.add_argument('--config', default='./sam/ops/config.yaml', help='Config file')
+    start_parser.add_argument('--api', action='store_true', help='Start FastAPI')
     
     # PSP commands
     psp_parser = subparsers.add_parser('psp', help='PSP operations')
@@ -58,6 +63,10 @@ Examples:
     identity_subparsers.add_parser('show', help='Show identity summary')
     identity_subparsers.add_parser('create', help='Create new identity')
     identity_subparsers.add_parser('demo', help='Run identity demo')
+    
+    # PSP document command
+    psp_doc_parser = subparsers.add_parser('psp-doc', help='PSP document operations')
+    psp_doc_parser.add_argument('--text', required=True, help='Text to process')
     
     # Test command
     test_parser = subparsers.add_parser('test', help='Run tests')
@@ -84,6 +93,8 @@ Examples:
             return handle_vsp(args)
         elif args.command == 'identity':
             return handle_identity(args)
+        elif args.command == 'psp-doc':
+            return handle_psp_doc(args)
         elif args.command == 'test':
             return run_tests(args)
         else:
@@ -99,48 +110,47 @@ def init_sam(args) -> int:
     """Initialize new S.A.M. instance."""
     logger = get_logger(__name__)
     
-    data_dir = Path(args.data_dir)
-    data_dir.mkdir(parents=True, exist_ok=True)
-    
-    logger.info("Initializing S.A.M. instance", data_dir=str(data_dir))
-    
-    # Create initial PSP
-    psp = PSP()
-    psp.set_mode("idle")
-    
-    # Initialize MAAL
-    with MAAL(
-        sqlite_path=str(data_dir / "sam.db"),
-        lancedb_path=str(data_dir / "vectors.lancedb")
-    ) as maal:
-        # Save initial PSP
-        psp_id = maal.save_psp(psp)
-        logger.info("Initial PSP saved", psp_id=psp_id)
-    
-    logger.info("S.A.M. instance initialized successfully")
-    return 0
+    try:
+        cfg = bootstrap()
+        path = cfg.security.keystore_path
+        if os.path.exists(path):
+            print("Keystore already exists.")
+            return 0
+        
+        pw = getpass.getpass("Set keystore passphrase: ")
+        # seed material (ed25519, app secrets) – for now just placeholder
+        payload = {"version": "1", "keys": {}}
+        create_keystore(path, pw, payload)
+        print(f"Keystore created at {path}")
+        
+        logger.info("S.A.M. instance initialized successfully")
+        return 0
+        
+    except Exception as e:
+        logger.error("Failed to initialize S.A.M.", error=str(e))
+        return 1
 
 
 def start_sam(args) -> int:
     """Start S.A.M. instance."""
     logger = get_logger(__name__)
     
-    logger.info("Starting S.A.M. instance")
-    
-    # Load existing PSP
-    with MAAL() as maal:
-        psp = maal.load_latest_psp()
-        if psp is None:
-            logger.error("No PSP found. Run 'sam init' first.")
-            return 1
+    try:
+        cfg = bootstrap()
         
-        logger.info("PSP loaded", 
-                   instance_id=psp.instance_id,
-                   mode=psp.mode,
-                   working_memory_size=len(psp.working_memory))
-    
-    logger.info("S.A.M. instance started successfully")
-    return 0
+        if hasattr(args, 'api') and args.api:
+            # Start FastAPI
+            import uvicorn
+            uvicorn.run("sam.api.fast:app", host=cfg.api.host, port=cfg.api.port, reload=False)
+        else:
+            # Core services only
+            print("Core services initialized (no API).")
+            
+        return 0
+        
+    except Exception as e:
+        logger.error("Failed to start S.A.M.", error=str(e))
+        return 1
 
 
 def handle_psp(args) -> int:
@@ -501,6 +511,43 @@ def demo_identity() -> int:
     
     print("\n✅ Identity Core demo completed successfully!")
     return 0
+
+
+def handle_psp_doc(args) -> int:
+    """Handle PSP document operations."""
+    logger = get_logger(__name__)
+    
+    try:
+        cfg = bootstrap()
+        from sam.memory.rel_sqlite import open_sqlite
+        from sam.models.embedding_minilm import MiniLMAdapter
+        
+        conn = open_sqlite(cfg.memory.sqlite_path)
+        embed = MiniLMAdapter(cfg.embedding.model)
+        maal = MAAL(cfg, embed, conn)
+        
+        # create minimal PSP record (id=hash(text))
+        import hashlib
+        did = hashlib.blake2b(args.text.encode(), digest_size=16).hexdigest()
+        doc = {"id": did, "text": args.text, "meta": {"source": "cli"}}
+        maal.write_document(doc)
+        
+        # run V_SP calculation (call into existing V_SP engine)
+        from sam.core.vsp_engine import VSPEngine
+        engine = VSPEngine()
+        engine.update_schema_basis([0.1, 0.2, 0.3, 0.4])  # 4D basis
+        embedding = embed.embed([args.text])[0]
+        vsp = engine.compute_vsp(embedding)
+        mode = engine.get_mode(vsp)
+        
+        result = {"id": did, "mode": mode.value}
+        print(json.dumps(result, ensure_ascii=False))
+        
+        return 0
+        
+    except Exception as e:
+        logger.error("Failed to process PSP document", error=str(e))
+        return 1
 
 
 if __name__ == "__main__":
